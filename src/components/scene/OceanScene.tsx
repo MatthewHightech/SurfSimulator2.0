@@ -4,16 +4,24 @@ import { OrbitControls } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { Suspense } from "react";
 import { BathymetryFloor } from "./BathymetryFloor";
-import { OceanGrid } from "./OceanGrid";
+import { WavePhaseController } from "./WavePhaseController";
+import { CrestSpray } from "./CrestSpray";
+import { OceanSurface } from "./OceanSurface";
+import { PostEffects } from "./PostEffects";
+import { WhitewaterLayer } from "./WhitewaterLayer";
 
 function SceneContent() {
   return (
     <>
+      <WavePhaseController />
       <color attach="background" args={["#0a0e14"]} />
-      <ambientLight intensity={0.35} />
-      <directionalLight position={[12, 18, 8]} intensity={1.1} />
+      <ambientLight intensity={0.4} />
+      <directionalLight position={[12, 18, 8]} intensity={1.0} />
       <BathymetryFloor />
-      <OceanGrid />
+      <OceanSurface />
+      <WhitewaterLayer />
+      <CrestSpray />
+      <PostEffects />
       <OrbitControls
         enableDamping
         dampingFactor={0.08}

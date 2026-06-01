@@ -5,13 +5,19 @@ import {
 } from "./constants";
 import type { BathymetryPreset } from "./types";
 
+/**
+ * All presets share the same orientation on the 2D canvas:
+ * - Top edge (y = 0): deep open ocean, farthest from the default camera (+Z)
+ * - Bottom edge (y = height): shallow shore, nearest the camera
+ */
+
 function clearToDeep(ctx: CanvasRenderingContext2D, width: number, height: number) {
   ctx.fillStyle = DEPTH_DEEP;
   ctx.fillRect(0, 0, width, height);
 }
 
 /**
- * Beach break: linear slope from deep (bottom) to shallow (top).
+ * Beach break: linear shelf — deep open ocean at top, shallow shore at bottom.
  */
 export function drawBeachBreak(
   ctx: CanvasRenderingContext2D,
@@ -20,9 +26,10 @@ export function drawBeachBreak(
 ) {
   clearToDeep(ctx, width, height);
 
-  const gradient = ctx.createLinearGradient(0, height, 0, 0);
+  const gradient = ctx.createLinearGradient(0, 0, 0, height);
   gradient.addColorStop(0, DEPTH_DEEP);
-  gradient.addColorStop(0.55, "#1a1a1a");
+  gradient.addColorStop(0.15, "#1a1a1a");
+  gradient.addColorStop(0.45, "#4a4a4a");
   gradient.addColorStop(0.85, "#9a9a9a");
   gradient.addColorStop(1, DEPTH_SHALLOW);
 
@@ -31,7 +38,8 @@ export function drawBeachBreak(
 }
 
 /**
- * Reef break: deep basin with a concentrated shallow mound at center.
+ * Reef break: same horizontal layout as beach, but a sharp shelf near shore
+ * so swell hits a steep reef and jacks / barrels.
  */
 export function drawReefBreak(
   ctx: CanvasRenderingContext2D,
@@ -40,31 +48,21 @@ export function drawReefBreak(
 ) {
   clearToDeep(ctx, width, height);
 
-  const cx = width * 0.5;
-  const cy = height * 0.5;
-  const radiusX = width * 0.2;
-  const radiusY = height * 0.16;
+  const gradient = ctx.createLinearGradient(0, 0, 0, height);
+  gradient.addColorStop(0, DEPTH_DEEP);
+  gradient.addColorStop(0.58, DEPTH_DEEP);
+  gradient.addColorStop(0.72, "#141414");
+  gradient.addColorStop(0.82, "#3a3a3a");
+  gradient.addColorStop(0.9, "#8f8f8f");
+  gradient.addColorStop(0.96, "#d4d4d4");
+  gradient.addColorStop(1, DEPTH_SHALLOW);
 
-  const mound = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(radiusX, radiusY));
-  mound.addColorStop(0, DEPTH_SHALLOW);
-  mound.addColorStop(0.45, "#e0e0e0");
-  mound.addColorStop(0.72, "#4a4a4a");
-  mound.addColorStop(1, DEPTH_DEEP);
-
-  ctx.fillStyle = mound;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, radiusX, radiusY, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Sharpen the reef crown
-  ctx.fillStyle = "rgba(255, 255, 255, 0.35)";
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, radiusX * 0.42, radiusY * 0.38, 0, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
 }
 
 /**
- * Point break: headland wedge from the bottom-left corner tapering diagonally.
+ * Point break: headland wedge from the bottom shore toward open ocean at top.
  */
 export function drawPointBreak(
   ctx: CanvasRenderingContext2D,
@@ -93,14 +91,6 @@ export function drawPointBreak(
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
   ctx.restore();
-
-  // Secondary shelf line for a more natural point shape
-  ctx.strokeStyle = "rgba(220, 220, 220, 0.25)";
-  ctx.lineWidth = Math.max(2, width * 0.006);
-  ctx.beginPath();
-  ctx.moveTo(0, height * 0.62);
-  ctx.quadraticCurveTo(width * 0.32, height * 0.38, width * 0.58, height * 0.22);
-  ctx.stroke();
 }
 
 const DRAWERS: Record<

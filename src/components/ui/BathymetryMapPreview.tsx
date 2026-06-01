@@ -36,7 +36,7 @@ export function BathymetryMapPreview() {
         aria-label={`Bathymetry preview: ${preset}`}
       />
       <span className="text-[10px] text-slate-500">
-        Black = deep · White = shallow
+        Top = deep ocean · Bottom = shore
       </span>
     </div>
   );
