@@ -13,8 +13,13 @@ export function OceanGrid() {
   );
 
   return (
-    <mesh geometry={geometry} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
-      <meshBasicMaterial color="#3d8bfd" wireframe />
+    <mesh
+      geometry={geometry}
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[0, 0.02, 0]}
+      renderOrder={1}
+    >
+      <meshBasicMaterial color="#3d8bfd" wireframe transparent opacity={0.55} />
     </mesh>
   );
 }
