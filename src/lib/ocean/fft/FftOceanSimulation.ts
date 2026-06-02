@@ -7,6 +7,7 @@ import * as THREE from "three";
 import { buildInitialSpectrum } from "./jonswap";
 import {
   fullscreenVertexShader,
+  jacobianMapFragmentShader,
   normalMapFragmentShader,
   phaseUpdateFragmentShader,
   spectrumFragmentShader,
@@ -18,6 +19,12 @@ export type FftOceanParams = {
   periodSeconds: number;
   heightMeters: number;
   directionDeg: number;
+};
+
+export type FftDispersionParams = {
+  meanWaterDepthM: number;
+  shallowDispersion: number;
+  jacobianThreshold: number;
 };
 
 function createFloatTarget(
@@ -63,6 +70,7 @@ export class FftOceanSimulation {
 
   readonly displacementMap: THREE.WebGLRenderTarget;
   readonly normalMap: THREE.WebGLRenderTarget;
+  readonly jacobianMap: THREE.WebGLRenderTarget;
 
   private readonly renderer: THREE.WebGLRenderer;
   private readonly camera: THREE.OrthographicCamera;
@@ -80,6 +88,7 @@ export class FftOceanSimulation {
   private readonly horizontalFftMaterial: THREE.ShaderMaterial;
   private readonly verticalFftMaterial: THREE.ShaderMaterial;
   private readonly normalMaterial: THREE.ShaderMaterial;
+  private readonly jacobianMaterial: THREE.ShaderMaterial;
 
   private pingPhase = true;
   private paramsKey = "";
@@ -103,6 +112,7 @@ export class FftOceanSimulation {
     this.pongTransformRT = createFloatTarget(N, N);
     this.displacementMap = createLinearFloatTarget(N, N);
     this.normalMap = createLinearFloatTarget(N, N);
+    this.jacobianMap = createLinearFloatTarget(N, N);
 
     this.phaseMaterial = new THREE.ShaderMaterial({
       uniforms: {
@@ -110,6 +120,8 @@ export class FftOceanSimulation {
         uDeltaTime: { value: 0 },
         uResolution: { value: N },
         uTileSize: { value: OCEAN_TILE_SIZE },
+        uMeanWaterDepthM: { value: 6 },
+        uShallowDispersion: { value: 0.72 },
       },
       vertexShader: fullscreenVertexShader,
       fragmentShader: phaseUpdateFragmentShader,
@@ -167,7 +179,27 @@ export class FftOceanSimulation {
       depthWrite: false,
     });
 
+    this.jacobianMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        uDisplacementMap: { value: this.displacementMap.texture },
+        uResolution: { value: N },
+        uJacobianThreshold: { value: 0.42 },
+      },
+      vertexShader: fullscreenVertexShader,
+      fragmentShader: jacobianMapFragmentShader,
+      depthTest: false,
+      depthWrite: false,
+    });
+
     this.initPhaseTexture();
+  }
+
+  setDispersionParams(params: FftDispersionParams): void {
+    this.phaseMaterial.uniforms.uMeanWaterDepthM.value = params.meanWaterDepthM;
+    this.phaseMaterial.uniforms.uShallowDispersion.value =
+      params.shallowDispersion;
+    this.jacobianMaterial.uniforms.uJacobianThreshold.value =
+      params.jacobianThreshold;
   }
 
   private initPhaseTexture(): void {
@@ -302,6 +334,13 @@ export class FftOceanSimulation {
     this.renderer.setRenderTarget(this.normalMap);
     this.renderer.render(this.quad, this.camera);
 
+    // Jacobian / fold map
+    this.jacobianMaterial.uniforms.uDisplacementMap.value =
+      this.displacementMap.texture;
+    this.quad.material = this.jacobianMaterial;
+    this.renderer.setRenderTarget(this.jacobianMap);
+    this.renderer.render(this.quad, this.camera);
+
     this.renderer.setRenderTarget(prevTarget);
     this.renderer.autoClear = prevAutoClear;
     this.renderer.xr.enabled = prevXrEnabled;
@@ -316,11 +355,13 @@ export class FftOceanSimulation {
     this.pongTransformRT.dispose();
     this.displacementMap.dispose();
     this.normalMap.dispose();
+    this.jacobianMap.dispose();
     this.phaseMaterial.dispose();
     this.spectrumMaterial.dispose();
     this.horizontalFftMaterial.dispose();
     this.verticalFftMaterial.dispose();
     this.normalMaterial.dispose();
+    this.jacobianMaterial.dispose();
     this.quad.geometry.dispose();
   }
 }

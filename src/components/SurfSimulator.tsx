@@ -4,6 +4,7 @@ import { BathymetryProvider } from "@/context/BathymetryContext";
 import { SimulationProvider } from "@/context/SimulationContext";
 import { BathymetryTerrainPreview } from "@/components/ui/BathymetryTerrainPreview";
 import { BathymetryPresetBar } from "@/components/ui/BathymetryPresetBar";
+import { BreakingTunePanel } from "@/components/ui/BreakingTunePanel";
 import { SimulationControls } from "@/components/ui/SimulationControls";
 import { SurfCanvas } from "@/components/scene/SurfCanvas";
 
@@ -24,6 +25,10 @@ export function SurfSimulator() {
           <div className="absolute inset-0">
             <SurfCanvas />
           </div>
+
+          <aside className="absolute left-4 top-20 z-10">
+            <BreakingTunePanel />
+          </aside>
 
           <aside className="absolute right-4 top-20 z-10 flex w-56 flex-col gap-4">
             <SimulationControls />

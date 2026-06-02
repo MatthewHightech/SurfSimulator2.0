@@ -1,3 +1,4 @@
+import { breakingGlsl } from "@/lib/ocean/breaking.glsl";
 import { shoalingGlsl } from "@/lib/ocean/shoaling.glsl";
 
 export const fullscreenVertexShader = /* glsl */ `
@@ -95,11 +96,16 @@ uniform sampler2D uPhases;
 uniform float uDeltaTime;
 uniform float uResolution;
 uniform float uTileSize;
+uniform float uMeanWaterDepthM;
+uniform float uShallowDispersion;
 
 varying vec2 vUv;
 
 float omega(float k) {
-  return sqrt(G * k);
+  float wDeep = sqrt(G * k);
+  float kh = k * max(uMeanWaterDepthM, 0.35);
+  float wShallow = sqrt(G * k * tanh(kh));
+  return mix(wDeep, wShallow, clamp(uShallowDispersion, 0.0, 1.0));
 }
 
 void main() {
@@ -228,19 +234,63 @@ void main() {
 }
 `;
 
+/** R = Jacobian J, G = fold amount (1 − J)+ */
+export const jacobianMapFragmentShader = /* glsl */ `
+precision highp float;
+
+uniform sampler2D uDisplacementMap;
+uniform float uResolution;
+uniform float uJacobianThreshold;
+
+varying vec2 vUv;
+
+void main() {
+  float texel = 1.0 / uResolution;
+
+  vec3 cx =
+    texture2D(uDisplacementMap, vUv + vec2(texel, 0.0)).rgb -
+    texture2D(uDisplacementMap, vUv - vec2(texel, 0.0)).rgb;
+  vec3 cz =
+    texture2D(uDisplacementMap, vUv + vec2(0.0, texel)).rgb -
+    texture2D(uDisplacementMap, vUv - vec2(0.0, texel)).rgb;
+
+  float dDxdx = cx.x;
+  float dDxdz = cx.z;
+  float dDzdx = cz.x;
+  float dDzdz = cz.z;
+
+  float J = (1.0 + dDxdx) * (1.0 + dDzdz) - dDxdz * dDzdx;
+  float fold = smoothstep(uJacobianThreshold, uJacobianThreshold - 0.2, J);
+
+  gl_FragColor = vec4(J, fold, 0.0, 1.0);
+}
+`;
+
 export const oceanSurfaceVertexShader = /* glsl */ `
 precision highp float;
 
 uniform sampler2D uDisplacementMap;
+uniform sampler2D uJacobianMap;
 uniform sampler2D uBathymetry;
 uniform sampler2D uFloorHeight;
 uniform float uDisplacementScale;
+uniform float uDispMapSize;
 uniform float uOceanExtent;
 uniform float uTideMeters;
 uniform float uOceanZDeep;
 uniform float uOceanZShore;
 uniform float uBeachZMax;
 uniform float uWashExtent;
+uniform vec2 uSwellDirection;
+uniform float uJacobianThreshold;
+uniform float uBreakZoneShallowMin;
+uniform float uBreakZoneShallowMax;
+uniform float uPlungeStrength;
+uniform float uLipThrow;
+uniform float uLipDrop;
+uniform float uBackFaceFlatten;
+uniform float uFaceSteepen;
+uniform float uBarrelPocket;
 
 varying vec3 vWorldPos;
 varying vec2 vUv;
@@ -248,8 +298,11 @@ varying float vShallowNorm;
 varying float vWashT;
 varying float vWashAlpha;
 varying float vFloorY;
+varying float vBarrelShade;
+varying float vFold;
 
 ${shoalingGlsl}
+${breakingGlsl}
 
 void main() {
   vUv = uv;
@@ -277,6 +330,38 @@ void main() {
   disp.x *= horizScale;
   disp.z *= horizScale;
   disp.y *= ampScale;
+
+  float texelUv = 1.0 / max(uDispMapSize, 1.0);
+  float foldMap = sampleJacobianFold(uv, uJacobianMap);
+  float foldLocal = computeJacobianFoldLocal(uv, uDisplacementMap, texelUv, horizScale);
+  float fold = max(foldMap, foldLocal * 0.85);
+  vFold = fold;
+
+  float breakMask = breakZoneMask(
+    shallowNorm,
+    uBreakZoneShallowMin,
+    uBreakZoneShallowMax
+  );
+  float breakAmt = breakMask * uPlungeStrength * (0.35 + fold * 0.65);
+
+  vec2 swellDir = length(uSwellDirection) > 1e-5
+    ? normalize(uSwellDirection)
+    : vec2(0.0, 1.0);
+  float lipMask = applyPlungingDeform(
+    disp,
+    swellDir,
+    breakAmt,
+    uLipThrow,
+    uLipDrop,
+    uBackFaceFlatten,
+    uFaceSteepen
+  );
+
+  float along = dot(
+    normalize(vec2(disp.x + 1e-6, disp.z + 1e-6)),
+    swellDir
+  );
+  vBarrelShade = barrelPocketShade(lipMask, along, uBarrelPocket, washT);
 
   float floorYRest = sampleFloorY(worldXZ, uFloorHeight, uOceanExtent, uOceanZDeep, uBeachZMax);
   float seaLevel = uTideMeters;
@@ -316,6 +401,8 @@ precision highp float;
 
 uniform sampler2D uNormalMap;
 uniform float uTideMeters;
+uniform float uJacobianFoamGain;
+uniform float uBarrelDarken;
 uniform vec3 uSunDirection;
 uniform vec3 uDeepColor;
 uniform vec3 uShallowColor;
@@ -327,6 +414,8 @@ varying float vShallowNorm;
 varying float vWashT;
 varying float vWashAlpha;
 varying float vFloorY;
+varying float vBarrelShade;
+varying float vFold;
 
 void main() {
   vec3 N = normalize(texture2D(uNormalMap, vUv).rgb);
@@ -345,15 +434,21 @@ void main() {
 
   float breakMask = smoothstep(0.48, 0.78, vShallowNorm) * smoothstep(0.22, 0.62, slope);
   float washFoam = smoothstep(0.05, 0.55, vWashT) * (1.0 - smoothstep(0.7, 1.0, vWashT));
-  float foam = max(
-    smoothstep(0.35, 0.92, breakMask),
-    washFoam * 0.92
+  float foldFoam = smoothstep(0.08, 0.55, vFold) * uJacobianFoamGain;
+  float foam = clamp(
+    max(
+      max(smoothstep(0.35, 0.92, breakMask), washFoam * 0.92),
+      foldFoam
+    ),
+    0.0,
+    1.0
   );
   vec3 foamColor = vec3(0.88, 0.95, 0.98);
 
   vec3 sky = vec3(0.45, 0.62, 0.78);
   vec3 color = mix(water * (0.35 + 0.65 * diffuse), sky, fresnel * 0.55);
   color += vec3(0.35, 0.42, 0.38) * spec * 0.45;
+  color = mix(color, color * (1.0 - uBarrelDarken), vBarrelShade);
   color = mix(color, foamColor, foam * 0.8);
 
   if (vFloorY > uTideMeters + 0.2) {

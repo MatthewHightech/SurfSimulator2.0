@@ -2,6 +2,13 @@
 
 import { DEFAULT_SIMULATION, TIDE_RANGE } from "@/lib/ocean/constants";
 import {
+  DEFAULT_BREAKING_PARAMS,
+  mergeBreakingParams,
+  parseTuneExport,
+  type BreakingParams,
+  type SurfTuneExport,
+} from "@/lib/ocean/breakingParams";
+import {
   SWELL_HEIGHT_RANGE,
   SWELL_PERIOD_RANGE,
 } from "@/lib/ocean/swellPhysics";
@@ -22,10 +29,18 @@ export type SimulationState = {
 };
 
 type SimulationContextValue = SimulationState & {
+  breaking: BreakingParams;
   setSwellPeriodSeconds: (value: number) => void;
   setSwellHeightMeters: (value: number) => void;
   setSwellDirectionDeg: (value: number) => void;
   setTide: (value: number) => void;
+  setBreakingParam: <K extends keyof BreakingParams>(
+    key: K,
+    value: BreakingParams[K],
+  ) => void;
+  resetBreakingParams: () => void;
+  importTune: (json: string) => boolean;
+  exportTune: () => SurfTuneExport;
 };
 
 const SimulationContext = createContext<SimulationContextValue | null>(null);
@@ -59,6 +74,9 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
     DEFAULT_SIMULATION.swellDirectionDeg,
   );
   const [tide, setTideState] = useState<number>(DEFAULT_SIMULATION.tide);
+  const [breaking, setBreaking] = useState<BreakingParams>({
+    ...DEFAULT_BREAKING_PARAMS,
+  });
 
   const setSwellPeriodSeconds = useCallback((value: number) => {
     setSwellPeriodState(clampPeriod(value));
@@ -78,26 +96,83 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const setBreakingParam = useCallback(
+    <K extends keyof BreakingParams>(key: K, value: BreakingParams[K]) => {
+      setBreaking((prev) => ({ ...prev, [key]: value }));
+    },
+    [],
+  );
+
+  const resetBreakingParams = useCallback(() => {
+    setBreaking({ ...DEFAULT_BREAKING_PARAMS });
+  }, []);
+
+  const exportTune = useCallback((): SurfTuneExport => {
+    return {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      simulation: {
+        swellPeriodSeconds,
+        swellHeightMeters,
+        swellDirectionDeg,
+        tide,
+      },
+      breaking: { ...breaking },
+    };
+  }, [
+    swellPeriodSeconds,
+    swellHeightMeters,
+    swellDirectionDeg,
+    tide,
+    breaking,
+  ]);
+
+  const importTune = useCallback((json: string): boolean => {
+    const data = parseTuneExport(json);
+    if (!data) return false;
+    setSwellPeriodState(clampPeriod(data.simulation.swellPeriodSeconds));
+    setSwellHeightState(clampHeight(data.simulation.swellHeightMeters));
+    setSwellDirectionState(clampDirection(data.simulation.swellDirectionDeg));
+    setTideState(
+      Math.min(
+        TIDE_RANGE.max,
+        Math.max(TIDE_RANGE.min, data.simulation.tide),
+      ),
+    );
+    setBreaking(mergeBreakingParams(data.breaking));
+    return true;
+  }, []);
+
   const value = useMemo<SimulationContextValue>(
     () => ({
       swellPeriodSeconds,
       swellHeightMeters,
       swellDirectionDeg,
       tide,
+      breaking,
       setSwellPeriodSeconds,
       setSwellHeightMeters,
       setSwellDirectionDeg,
       setTide,
+      setBreakingParam,
+      resetBreakingParams,
+      importTune,
+      exportTune,
     }),
     [
       swellPeriodSeconds,
       swellHeightMeters,
       swellDirectionDeg,
       tide,
+      breaking,
       setSwellPeriodSeconds,
       setSwellHeightMeters,
       setSwellDirectionDeg,
       setTide,
+      setBreakingParam,
+      resetBreakingParams,
+      importTune,
+      exportTune,
     ],
   );
 
