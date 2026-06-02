@@ -1,6 +1,7 @@
 "use client";
 
 import { useSimulation } from "@/context/SimulationContext";
+import { TIDE_RANGE } from "@/lib/ocean/constants";
 import {
   SWELL_DIRECTION_RANGE,
   SWELL_HEIGHT_RANGE,
@@ -56,6 +57,18 @@ export function SimulationControls() {
         onChange={simulation.setSwellDirectionDeg}
       />
 
+      <SliderField
+        id="tide"
+        label="Tide"
+        value={simulation.tide}
+        min={TIDE_RANGE.min}
+        max={TIDE_RANGE.max}
+        step={TIDE_RANGE.step}
+        unit="m"
+        hint="Water level vs mean sea (±2 m)"
+        onChange={simulation.setTide}
+      />
+
       <p className="text-[10px] leading-snug text-slate-500">
         λp ≈ {wavelength.toFixed(0)} m · ωp = {omegaP.toFixed(3)} rad/s · 256²
         FFT tile
@@ -92,7 +105,7 @@ function SliderField({
           {label}
         </label>
         <span className="tabular-nums text-sm font-medium text-sky-300">
-          {value.toFixed(step < 1 ? 1 : 0)}
+          {value.toFixed(step < 1 ? 2 : 0)}
           {unit}
         </span>
       </div>

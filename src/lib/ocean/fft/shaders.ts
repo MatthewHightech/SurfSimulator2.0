@@ -1,3 +1,5 @@
+import { shoalingGlsl } from "@/lib/ocean/shoaling.glsl";
+
 export const fullscreenVertexShader = /* glsl */ `
 varying vec2 vUv;
 
@@ -230,23 +232,80 @@ export const oceanSurfaceVertexShader = /* glsl */ `
 precision highp float;
 
 uniform sampler2D uDisplacementMap;
+uniform sampler2D uBathymetry;
+uniform sampler2D uFloorHeight;
 uniform float uDisplacementScale;
+uniform float uOceanExtent;
+uniform float uTideMeters;
+uniform float uOceanZDeep;
+uniform float uOceanZShore;
+uniform float uBeachZMax;
+uniform float uWashExtent;
 
-varying vec3 vNormal;
 varying vec3 vWorldPos;
 varying vec2 vUv;
+varying float vShallowNorm;
+varying float vWashT;
+varying float vWashAlpha;
+varying float vFloorY;
+
+${shoalingGlsl}
 
 void main() {
   vUv = uv;
+  float worldZ = position.z;
+  vec2 worldXZ = vec2(position.x, worldZ);
+  float washT = beachWashT(worldZ, uOceanZShore, uWashExtent);
+  vWashT = washT;
+
+  vec2 sampleXZ = mix(worldXZ, vec2(worldXZ.x, uOceanZShore), step(0.001, washT));
+  vec2 bathyUv = worldToBathyUv(sampleXZ, uOceanExtent);
+  float shallowNorm = sampleShallowNorm(bathyUv, uBathymetry);
+  float waterDepth = max(0.12, shallowNormToWaterDepth(shallowNorm) - uTideMeters);
+
+  float ampScale =
+    shoalingAmplitudeScale(waterDepth) *
+    reefJackBoost(shallowNorm) *
+    deepWaterAttenuation(shallowNorm);
+  float horizScale = shoalingHorizontalScale(waterDepth);
+
+  float washFade = 1.0 - smoothstep(0.08, 0.95, washT);
+  ampScale *= washFade;
+  horizScale *= mix(1.0, 0.25, washT);
+
   vec3 disp = texture2D(uDisplacementMap, uv).rgb * uDisplacementScale;
-  // Geometry is pre-rotated to the XZ plane (Y up): position ≈ (x, 0, z).
-  vec3 pos = vec3(
-    position.x + disp.r,
-    disp.g,
-    position.z + disp.b
+  disp.x *= horizScale;
+  disp.z *= horizScale;
+  disp.y *= ampScale;
+
+  float floorYRest = sampleFloorY(worldXZ, uFloorHeight, uOceanExtent, uOceanZDeep, uBeachZMax);
+  float seaLevel = uTideMeters;
+
+  float clearance = seaLevel - floorYRest;
+  float depthScale = smoothstep(0.08, 2.2, clearance);
+  disp.y *= depthScale;
+
+  vec2 displacedXZ = vec2(
+    position.x + disp.x * washFade,
+    position.z + disp.z * washFade
+  );
+  float floorY = max(
+    floorYRest,
+    sampleFloorY(displacedXZ, uFloorHeight, uOceanExtent, uOceanZDeep, uBeachZMax)
   );
 
-  vNormal = normalize(normalMatrix * vec3(0.0, 1.0, 0.0));
+  float oceanY = disp.y + seaLevel;
+  float washBlend = smoothstep(0.0, 0.22, washT);
+  float washRipple = disp.y * 0.4;
+  float sheetY = floorY + 0.12 + washRipple + seaLevel;
+  float waveSurface = mix(oceanY, sheetY, washBlend);
+  float surfY = clampSurfaceAboveFloor(waveSurface, floorY);
+
+  vec3 pos = vec3(displacedXZ.x, surfY, displacedXZ.y);
+
+  vFloorY = floorY;
+  vShallowNorm = mix(shallowNorm, 1.0, smoothstep(0.0, 0.35, washT));
+  vWashAlpha = (1.0 - smoothstep(0.72, 1.0, washT)) * isSubmerged(floorY, seaLevel);
   vWorldPos = (modelMatrix * vec4(pos, 1.0)).xyz;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 }
@@ -256,32 +315,56 @@ export const oceanSurfaceFragmentShader = /* glsl */ `
 precision highp float;
 
 uniform sampler2D uNormalMap;
+uniform float uTideMeters;
 uniform vec3 uSunDirection;
 uniform vec3 uDeepColor;
 uniform vec3 uShallowColor;
 uniform vec3 uCameraPosition;
 
-varying vec3 vNormal;
 varying vec3 vWorldPos;
 varying vec2 vUv;
+varying float vShallowNorm;
+varying float vWashT;
+varying float vWashAlpha;
+varying float vFloorY;
 
 void main() {
   vec3 N = normalize(texture2D(uNormalMap, vUv).rgb);
+  float slope = length(vec2(N.x, N.z)) / max(abs(N.y), 0.12);
   vec3 V = normalize(uCameraPosition - vWorldPos);
   vec3 L = normalize(uSunDirection);
   vec3 H = normalize(L + V);
 
   float fresnel = 0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
   float diffuse = max(dot(N, L), 0.0);
-  float spec = pow(max(dot(N, H), 0.0), 256.0);
+  float spec = pow(max(dot(N, H), 0.0), 256.0) * (1.0 - vWashT * 0.85);
 
   float heightTint = clamp(vWorldPos.y * 0.35 + 0.5, 0.0, 1.0);
-  vec3 water = mix(uDeepColor, uShallowColor, heightTint);
-  vec3 sky = vec3(0.45, 0.62, 0.78);
+  float shoreTint = smoothstep(0.35, 0.82, vShallowNorm);
+  vec3 water = mix(uDeepColor, uShallowColor, max(heightTint, shoreTint * 0.85));
 
+  float breakMask = smoothstep(0.48, 0.78, vShallowNorm) * smoothstep(0.22, 0.62, slope);
+  float washFoam = smoothstep(0.05, 0.55, vWashT) * (1.0 - smoothstep(0.7, 1.0, vWashT));
+  float foam = max(
+    smoothstep(0.35, 0.92, breakMask),
+    washFoam * 0.92
+  );
+  vec3 foamColor = vec3(0.88, 0.95, 0.98);
+
+  vec3 sky = vec3(0.45, 0.62, 0.78);
   vec3 color = mix(water * (0.35 + 0.65 * diffuse), sky, fresnel * 0.55);
   color += vec3(0.35, 0.42, 0.38) * spec * 0.45;
+  color = mix(color, foamColor, foam * 0.8);
 
-  gl_FragColor = vec4(color, 1.0);
+  if (vFloorY > uTideMeters + 0.2) {
+    discard;
+  }
+
+  float alpha = vWashAlpha;
+  if (alpha < 0.02) {
+    discard;
+  }
+
+  gl_FragColor = vec4(color, alpha);
 }
 `;

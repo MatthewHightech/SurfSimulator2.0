@@ -1,8 +1,6 @@
 "use client";
 
-import {
-  DEFAULT_SIMULATION,
-} from "@/lib/ocean/constants";
+import { DEFAULT_SIMULATION, TIDE_RANGE } from "@/lib/ocean/constants";
 import {
   SWELL_HEIGHT_RANGE,
   SWELL_PERIOD_RANGE,
@@ -20,12 +18,14 @@ export type SimulationState = {
   swellPeriodSeconds: number;
   swellHeightMeters: number;
   swellDirectionDeg: number;
+  tide: number;
 };
 
 type SimulationContextValue = SimulationState & {
   setSwellPeriodSeconds: (value: number) => void;
   setSwellHeightMeters: (value: number) => void;
   setSwellDirectionDeg: (value: number) => void;
+  setTide: (value: number) => void;
 };
 
 const SimulationContext = createContext<SimulationContextValue | null>(null);
@@ -58,6 +58,7 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
   const [swellDirectionDeg, setSwellDirectionState] = useState(
     DEFAULT_SIMULATION.swellDirectionDeg,
   );
+  const [tide, setTideState] = useState<number>(DEFAULT_SIMULATION.tide);
 
   const setSwellPeriodSeconds = useCallback((value: number) => {
     setSwellPeriodState(clampPeriod(value));
@@ -71,22 +72,32 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
     setSwellDirectionState(clampDirection(value));
   }, []);
 
+  const setTide = useCallback((value: number) => {
+    setTideState(
+      Math.min(TIDE_RANGE.max, Math.max(TIDE_RANGE.min, value)),
+    );
+  }, []);
+
   const value = useMemo<SimulationContextValue>(
     () => ({
       swellPeriodSeconds,
       swellHeightMeters,
       swellDirectionDeg,
+      tide,
       setSwellPeriodSeconds,
       setSwellHeightMeters,
       setSwellDirectionDeg,
+      setTide,
     }),
     [
       swellPeriodSeconds,
       swellHeightMeters,
       swellDirectionDeg,
+      tide,
       setSwellPeriodSeconds,
       setSwellHeightMeters,
       setSwellDirectionDeg,
+      setTide,
     ],
   );
 

@@ -26,11 +26,15 @@ export function drawBeachBreak(
 ) {
   clearToDeep(ctx, width, height);
 
+  // Steep shelf: long deep plateau, rapid shoaling near shore to jack waves.
   const gradient = ctx.createLinearGradient(0, 0, 0, height);
   gradient.addColorStop(0, DEPTH_DEEP);
-  gradient.addColorStop(0.15, "#1a1a1a");
-  gradient.addColorStop(0.45, "#4a4a4a");
-  gradient.addColorStop(0.85, "#9a9a9a");
+  gradient.addColorStop(0.52, DEPTH_DEEP);
+  gradient.addColorStop(0.64, "#121212");
+  gradient.addColorStop(0.74, "#3d3d3d");
+  gradient.addColorStop(0.82, "#707070");
+  gradient.addColorStop(0.9, "#a8a8a8");
+  gradient.addColorStop(0.96, "#d8d8d8");
   gradient.addColorStop(1, DEPTH_SHALLOW);
 
   ctx.fillStyle = gradient;

@@ -21,6 +21,8 @@ function configureTexture(texture: THREE.CanvasTexture) {
   texture.wrapT = THREE.ClampToEdgeWrapping;
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
+  // Must match worldToBathyUv: canvas bottom (shore) → GPU v≈0, top (deep) → v≈1.
+  texture.flipY = true;
   // Depth data — not sRGB color.
   texture.colorSpace = THREE.NoColorSpace;
   texture.needsUpdate = true;
