@@ -1,67 +1,73 @@
 "use client";
 
-import { useBathymetry } from "@/context/BathymetryContext";
-import { useSimulation } from "@/context/SimulationContext";
 import {
   OCEAN_GRID_SIZE,
   OCEAN_PLANE_SEGMENTS,
 } from "@/lib/ocean/constants";
 import {
-  createOceanUniforms,
-  syncOceanUniforms,
-} from "@/lib/ocean/uniforms";
-import {
-  oceanFragmentShader,
-  oceanVertexShader,
-} from "@/shaders/ocean/shaders";
-import { useFrame } from "@react-three/fiber";
-import { useEffect, useMemo, useRef } from "react";
+  oceanSurfaceFragmentShader,
+  oceanSurfaceVertexShader,
+} from "@/lib/ocean/fft/shaders";
+import { useSimulation } from "@/context/SimulationContext";
+import { useFftOcean } from "@/hooks/useFftOcean";
+import { useFrame, useThree } from "@react-three/fiber";
+import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
 export function OceanSurface() {
-  const { texture, ready, mapRevision } = useBathymetry();
   const simulation = useSimulation();
+  const { camera } = useThree();
   const materialRef = useRef<THREE.ShaderMaterial>(null);
 
-  const geometry = useMemo(
-    () =>
-      new THREE.PlaneGeometry(
-        OCEAN_GRID_SIZE,
-        OCEAN_GRID_SIZE,
-        OCEAN_PLANE_SEGMENTS,
-        OCEAN_PLANE_SEGMENTS,
-      ),
+  const simRef = useFftOcean({
+    periodSeconds: simulation.swellPeriodSeconds,
+    heightMeters: simulation.swellHeightMeters,
+    directionDeg: simulation.swellDirectionDeg,
+  });
+
+  const geometry = useMemo(() => {
+    const geo = new THREE.PlaneGeometry(
+      OCEAN_GRID_SIZE,
+      OCEAN_GRID_SIZE,
+      OCEAN_PLANE_SEGMENTS,
+      OCEAN_PLANE_SEGMENTS,
+    );
+    geo.rotateX(-Math.PI / 2);
+    return geo;
+  }, []);
+
+  const uniforms = useMemo(
+    () => ({
+      uDisplacementMap: { value: null as THREE.Texture | null },
+      uNormalMap: { value: null as THREE.Texture | null },
+      uDisplacementScale: { value: 1 },
+      uSunDirection: { value: new THREE.Vector3(0.32, 0.9, 0.32).normalize() },
+      uDeepColor: { value: new THREE.Color(0.02, 0.1, 0.24) },
+      uShallowColor: { value: new THREE.Color(0.16, 0.5, 0.7) },
+      uCameraPosition: { value: new THREE.Vector3() },
+    }),
     [],
   );
 
-  const uniforms = useMemo(() => createOceanUniforms(simulation), [simulation]);
-
-  useEffect(() => {
+  useFrame((_, delta) => {
+    const sim = simRef.current;
     const material = materialRef.current;
-    if (!material || !texture) return;
-    material.uniforms.uBathymetry.value = texture;
-  }, [texture, mapRevision]);
+    if (!sim || !material) return;
 
-  useFrame(() => {
-    const material = materialRef.current;
-    if (!material) return;
-    syncOceanUniforms(material.uniforms, simulation);
-    if (texture) {
-      material.uniforms.uBathymetry.value = texture;
-    }
+    sim.update(delta);
+
+    material.uniforms.uDisplacementMap.value = sim.displacementMap.texture;
+    material.uniforms.uNormalMap.value = sim.normalMap.texture;
+    material.uniforms.uCameraPosition.value.copy(camera.position);
   });
 
-  if (!ready || !texture) {
-    return null;
-  }
-
   return (
-    <mesh geometry={geometry} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
+    <mesh geometry={geometry} renderOrder={1}>
       <shaderMaterial
         ref={materialRef}
         uniforms={uniforms}
-        vertexShader={oceanVertexShader}
-        fragmentShader={oceanFragmentShader}
+        vertexShader={oceanSurfaceVertexShader}
+        fragmentShader={oceanSurfaceFragmentShader}
         side={THREE.FrontSide}
       />
     </mesh>

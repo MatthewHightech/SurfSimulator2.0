@@ -1,32 +1,26 @@
-import {
-  SWELL_HEIGHT_RANGE,
-  SWELL_PERIOD_RANGE,
-  swellToEngineParams,
-} from "./swellPhysics";
+/** FFT ocean tile extent in world units (1 unit ≈ 1 m). */
+export const OCEAN_TILE_SIZE = 64;
 
-/** World extent of the ocean plane (matches `PlaneGeometry` width/height). */
-export const OCEAN_GRID_SIZE = 32;
+/** Visible mesh matches the FFT tile. */
+export const OCEAN_GRID_SIZE = OCEAN_TILE_SIZE;
 
-/** Seafloor mesh sits below the lowest wave troughs so it never clips the surface. */
-export const SEAFLOOR_WORLD_Y = -2.4;
+/** FFT texture resolution — power of two. */
+export const FFT_RESOLUTION = 256;
 
+/** Mesh segments for displacement sampling. */
 export const OCEAN_PLANE_SEGMENTS = 256;
 
-const defaultSwell = swellToEngineParams(
-  SWELL_PERIOD_RANGE.default,
-  SWELL_HEIGHT_RANGE.default,
-);
+/** Tessendorf horizontal displacement intensity. */
+export const OCEAN_CHOPPINESS = 1.5;
+
+/** JONSWAP peak enhancement (3.3 = developing sea; higher = sharper swell peak). */
+export const JONSWAP_GAMMA = 3.3;
+
+/** Directional spread exponent — higher = narrower swell. */
+export const SWELL_DIRECTIONAL_SPREAD = 12;
 
 export const DEFAULT_SIMULATION = {
-  swellPeriodSeconds: SWELL_PERIOD_RANGE.default,
-  swellHeightMeters: SWELL_HEIGHT_RANGE.default,
+  swellPeriodSeconds: 8,
+  swellHeightMeters: 2,
   swellDirectionDeg: 285,
-  tide: 0,
-  ...defaultSwell,
 };
-
-/** Peel / shore foam onset (lower = more foam). */
-export const FOAM_STEEPNESS_THRESHOLD = 0.32;
-
-/** 96 × 72 × 4 layers */
-export const CREST_SPRAY_COUNT = 27648;

@@ -3,24 +3,17 @@
 import { OrbitControls } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { Suspense } from "react";
-import { BathymetryFloor } from "./BathymetryFloor";
-import { WavePhaseController } from "./WavePhaseController";
-import { CrestSpray } from "./CrestSpray";
 import { OceanSurface } from "./OceanSurface";
 import { PostEffects } from "./PostEffects";
-import { WhitewaterLayer } from "./WhitewaterLayer";
 
 function SceneContent() {
   return (
     <>
-      <WavePhaseController />
       <color attach="background" args={["#0a0e14"]} />
-      <ambientLight intensity={0.4} />
+      <fog attach="fog" args={["#0a0e14", 40, 120]} />
+      <ambientLight intensity={0.35} />
       <directionalLight position={[12, 18, 8]} intensity={1.0} />
-      <BathymetryFloor />
       <OceanSurface />
-      <WhitewaterLayer />
-      <CrestSpray />
       <PostEffects />
       <OrbitControls
         enableDamping
@@ -37,8 +30,12 @@ export function OceanScene() {
   return (
     <Canvas
       className="h-full w-full touch-none"
-      camera={{ position: [0, 14, 22], fov: 50, near: 0.1, far: 500 }}
-      gl={{ antialias: true, alpha: false }}
+      camera={{ position: [0, 10, 24], fov: 50, near: 0.1, far: 500 }}
+      gl={{
+        antialias: true,
+        alpha: false,
+        powerPreference: "high-performance",
+      }}
       dpr={[1, 2]}
     >
       <Suspense fallback={null}>

@@ -2,12 +2,10 @@
 
 import {
   DEFAULT_SIMULATION,
-  FOAM_STEEPNESS_THRESHOLD,
 } from "@/lib/ocean/constants";
 import {
   SWELL_HEIGHT_RANGE,
   SWELL_PERIOD_RANGE,
-  swellToEngineParams,
 } from "@/lib/ocean/swellPhysics";
 import {
   createContext,
@@ -22,19 +20,12 @@ export type SimulationState = {
   swellPeriodSeconds: number;
   swellHeightMeters: number;
   swellDirectionDeg: number;
-  tide: number;
-  baseFrequency: number;
-  baseAmplitude: number;
-  swellWavelength: number;
-  chopWavelength: number;
 };
 
 type SimulationContextValue = SimulationState & {
   setSwellPeriodSeconds: (value: number) => void;
   setSwellHeightMeters: (value: number) => void;
   setSwellDirectionDeg: (value: number) => void;
-  setTide: (value: number) => void;
-  foamThreshold: number;
 };
 
 const SimulationContext = createContext<SimulationContextValue | null>(null);
@@ -53,33 +44,20 @@ function clampHeight(value: number) {
   );
 }
 
-function buildState(
-  periodSeconds: number,
-  heightMeters: number,
-  swellDirectionDeg: number,
-  tide: number,
-): SimulationState {
-  const engine = swellToEngineParams(periodSeconds, heightMeters);
-  return {
-    swellPeriodSeconds: periodSeconds,
-    swellHeightMeters: heightMeters,
-    swellDirectionDeg,
-    tide,
-    ...engine,
-  };
+function clampDirection(value: number) {
+  return ((value % 360) + 360) % 360;
 }
 
 export function SimulationProvider({ children }: { children: ReactNode }) {
-  const [swellPeriodSeconds, setSwellPeriodState] = useState<number>(
+  const [swellPeriodSeconds, setSwellPeriodState] = useState(
     DEFAULT_SIMULATION.swellPeriodSeconds,
   );
-  const [swellHeightMeters, setSwellHeightState] = useState<number>(
+  const [swellHeightMeters, setSwellHeightState] = useState(
     DEFAULT_SIMULATION.swellHeightMeters,
   );
-  const [swellDirectionDeg, setSwellDirectionDeg] = useState(
+  const [swellDirectionDeg, setSwellDirectionState] = useState(
     DEFAULT_SIMULATION.swellDirectionDeg,
   );
-  const [tide, setTide] = useState(DEFAULT_SIMULATION.tide);
 
   const setSwellPeriodSeconds = useCallback((value: number) => {
     setSwellPeriodState(clampPeriod(value));
@@ -89,27 +67,26 @@ export function SimulationProvider({ children }: { children: ReactNode }) {
     setSwellHeightState(clampHeight(value));
   }, []);
 
+  const setSwellDirectionDeg = useCallback((value: number) => {
+    setSwellDirectionState(clampDirection(value));
+  }, []);
+
   const value = useMemo<SimulationContextValue>(
     () => ({
-      ...buildState(
-        swellPeriodSeconds,
-        swellHeightMeters,
-        swellDirectionDeg,
-        tide,
-      ),
-      foamThreshold: FOAM_STEEPNESS_THRESHOLD,
+      swellPeriodSeconds,
+      swellHeightMeters,
+      swellDirectionDeg,
       setSwellPeriodSeconds,
       setSwellHeightMeters,
       setSwellDirectionDeg,
-      setTide,
     }),
     [
       swellPeriodSeconds,
       swellHeightMeters,
       swellDirectionDeg,
-      tide,
       setSwellPeriodSeconds,
       setSwellHeightMeters,
+      setSwellDirectionDeg,
     ],
   );
 

@@ -2,19 +2,22 @@
 
 import { useSimulation } from "@/context/SimulationContext";
 import {
+  SWELL_DIRECTION_RANGE,
   SWELL_HEIGHT_RANGE,
   SWELL_PERIOD_RANGE,
-  swellPeriodToWavelength,
+  swellPeriodToOmegaP,
+  swellPeriodToPeakWavelength,
 } from "@/lib/ocean/swellPhysics";
 
 export function SimulationControls() {
   const simulation = useSimulation();
-  const wavelength = swellPeriodToWavelength(simulation.swellPeriodSeconds);
+  const wavelength = swellPeriodToPeakWavelength(simulation.swellPeriodSeconds);
+  const omegaP = swellPeriodToOmegaP(simulation.swellPeriodSeconds);
 
   return (
     <div className="pointer-events-auto flex flex-col gap-4 rounded-lg border border-slate-700/80 bg-slate-900/85 px-3 py-3 shadow-lg backdrop-blur-sm">
       <span className="text-xs font-medium uppercase tracking-wide text-slate-400">
-        Swell
+        Swell (JONSWAP / FFT)
       </span>
 
       <SliderField
@@ -25,7 +28,7 @@ export function SimulationControls() {
         max={SWELL_PERIOD_RANGE.max}
         step={SWELL_PERIOD_RANGE.step}
         unit="s"
-        hint="Longer period → slower, longer waves"
+        hint="Peak period Tp — longer = slower, longer waves"
         onChange={simulation.setSwellPeriodSeconds}
       />
 
@@ -37,13 +40,25 @@ export function SimulationControls() {
         max={SWELL_HEIGHT_RANGE.max}
         step={SWELL_HEIGHT_RANGE.step}
         unit="m"
-        hint="Significant swell height (trough to crest)"
+        hint="Significant swell height Hs"
         onChange={simulation.setSwellHeightMeters}
       />
 
+      <SliderField
+        id="swell-direction"
+        label="Direction"
+        value={simulation.swellDirectionDeg}
+        min={SWELL_DIRECTION_RANGE.min}
+        max={SWELL_DIRECTION_RANGE.max}
+        step={SWELL_DIRECTION_RANGE.step}
+        unit="°"
+        hint="Direction waves travel toward (from horizon)"
+        onChange={simulation.setSwellDirectionDeg}
+      />
+
       <p className="text-[10px] leading-snug text-slate-500">
-        λ ≈ {wavelength.toFixed(0)} m on this patch · ω ={" "}
-        {simulation.baseFrequency.toFixed(2)} rad/s
+        λp ≈ {wavelength.toFixed(0)} m · ωp = {omegaP.toFixed(3)} rad/s · 256²
+        FFT tile
       </p>
     </div>
   );
